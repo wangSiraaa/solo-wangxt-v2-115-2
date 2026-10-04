@@ -35,3 +35,32 @@ select, button { padding: 6px; }
 .north-label { color: #ff8a80; font-size: 12px; background: rgba(0,0,0,.5);
   padding: 2px 6px; border-radius: 4px; white-space: nowrap; }
 .trace { font-size: 12px; background: #eef4ff; padding: 8px; border-radius: 6px; }
+
+/* 三维视图：图例（建筑 / 植被区分） */
+.viewer-wrap { position: relative; width: 100%; height: 100%; }
+.legend { position: absolute; left: 12px; bottom: 12px; display: flex; gap: 14px;
+  background: rgba(16,20,28,.82); color: #ddd; font-size: 12px;
+  padding: 6px 10px; border-radius: 6px; pointer-events: none; }
+.legend .sw { display: inline-block; width: 10px; height: 10px;
+  border-radius: 2px; margin-right: 4px; vertical-align: -1px; }
+
+/* 教学用植被面板 */
+.veg-panel { display: flex; flex-direction: column; gap: 6px;
+  border-top: 1px dashed #ccc; padding-top: 8px; margin-top: 4px; }
+.veg-item { background: #fff; border: 1px solid #ddd; border-radius: 6px;
+  padding: 6px 8px; display: grid; gap: 2px; font-size: 12px; }
+.veg-tag { font-size: 11px; padding: 1px 6px; border-radius: 4px; margin-left: 6px; }
+.veg-tag.on { background: #e2f3e4; color: #2e7d32; }
+.veg-tag.off { background: #eee; color: #888; }
+.veg-actions { display: flex; gap: 6px; }
+.veg-actions button { flex: 1; }
+.veg-form { display: flex; flex-direction: column; gap: 4px; background: #fff;
+  border: 1px solid #ddd; border-radius: 6px; padding: 8px; }
+.veg-form label { margin-top: 2px; }
+.veg-form textarea { font-family: ui-monospace, monospace; font-size: 12px; }
+.months { display: flex; flex-wrap: wrap; gap: 3px; }
+.months button { width: 28px; padding: 2px 0; font-size: 11px; }
+.months button.on { background: #4caf50; color: #fff; border-color: #4caf50; }
+
+/* 连续时段中的植被遮挡区间 */
+.interval.veg { background: #dcedc8; }

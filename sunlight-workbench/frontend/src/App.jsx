@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { api } from './api.js'
 import SceneViewer from './components/SceneViewer.jsx'
 import ResultsPanel from './components/ResultsPanel.jsx'
+import VegetationPanel from './components/VegetationPanel.jsx'
 
 const DATES = ['2026-01-15', '2026-03-20', '2026-07-15'] // 跨冬夏算例日期
 
@@ -17,12 +18,13 @@ export default function App() {
   const [highlightOccluder, setHighlightOccluder] = useState(null)
   const [trace, setTrace] = useState(null)
   const [error, setError] = useState(null)
+  const [sceneDirty, setSceneDirty] = useState(false) // 运行后场景（植被）被修改
 
   useEffect(() => { api.scenes().then(setScenes).catch((e) => setError(String(e))) }, [])
 
   useEffect(() => {
     if (!sceneId) return
-    setRun(null); setSelectedPointId(null); setTrace(null)
+    setRun(null); setSelectedPointId(null); setTrace(null); setSceneDirty(false)
     api.scene(sceneId).then(setPayload)
     api.sunpath(sceneId, date).then(setSunpath)
   }, [sceneId, date])
@@ -34,9 +36,16 @@ export default function App() {
     const r = await api.run(sceneId, date, 5)
     const full = await api.runResult(r.run_id)
     setRun(full)
+    setSceneDirty(false)
     // 结果关联快照：渲染切换到快照内容，保证结果-场景一致可追溯
     const snap = await api.snapshot(full.snapshot_id)
     setPayload(snap.payload)
+  }
+
+  // 植被编辑后刷新为当前场景；已有运行结果仍关联其原快照，不受影响
+  const onVegetationChanged = async () => {
+    setPayload(await api.scene(sceneId))
+    if (run) setSceneDirty(true)
   }
 
   // 当前时刻各测点状态（取最近细样本）
@@ -88,7 +97,19 @@ export default function App() {
         </select>
         <button disabled={!sceneId} onClick={doRun}>运行当日分析（5min 步长）</button>
         {run && <div className="muted small">run #{run.run_id} · 快照 #{run.snapshot_id}</div>}
+        {run && sceneDirty && (
+          <div className="muted small">
+            场景（植被）已修改；运行 #{run.run_id} 结果仍对应快照 #{run.snapshot_id}，不受影响。
+          </div>
+        )}
         {error && <div className="error">{error}</div>}
+        {payload && sceneId && (
+          <VegetationPanel
+            sceneId={sceneId}
+            vegetation={payload.vegetation ?? []}
+            currentMonth={+date.slice(5, 7)}
+            onChanged={onVegetationChanged} />
+        )}
         {sunpath && (
           <>
             <label>时刻 {sunpath.points[timeIdx]?.time.slice(11, 16)}</label>
@@ -99,7 +120,11 @@ export default function App() {
         {trace && (
           <div className="trace">
             <h4>遮挡物追查（测点 #{trace.point_id}）</h4>
-            <div>遮挡物：{trace.occluders.join('、') || '无'}</div>
+            <div>遮挡物：{(trace.occluder_details
+              ? trace.occluder_details.map((d) =>
+                  d.kind === 'vegetation' ? `${d.name}（植被）` : `${d.name}（建筑）`)
+              : trace.occluders
+            ).join('、') || '无'}</div>
             <div className="muted small">{trace.note}</div>
             <button onClick={() => setTrace(null)}>关闭</button>
           </div>
@@ -110,6 +135,7 @@ export default function App() {
           payload={payload} sunpath={sunpath} timeIdx={timeIdx}
           pointStatus={pointStatus} selectedPointId={selectedPointId}
           highlightOccluder={highlightOccluder}
+          activeMonth={+date.slice(5, 7)}
           onSelectPoint={setSelectedPointId}
           onSelectBuilding={setHighlightOccluder} />
       </main>

@@ -3,6 +3,9 @@
 - S1 邻楼遮挡：目标住宅楼 + 正南板式邻楼 + 东南塔楼，用于冬夏对比算例。
 - S2 旋转场景：S1 全部几何逆时针旋转 30° 且 north_offset_deg=30，
   物理情形与 S1 完全等价，用于核对坐标旋转口径（两场景同日期结果应一致）。
+- 教学用植被：东西两侧各一株落叶乔木的简化树冠体量，叶期 4–10 月参与遮挡，
+  用于演示"夏季树荫 / 冬季落叶"的差别。它是显式合成几何，与场景说明中
+  "未建模遮挡"的免责文字无关（后者不进入任何计算）。
 所有坐标为模型局部米制坐标；经纬度/时区/朝北偏角统一挂在场景上。
 """
 from __future__ import annotations
@@ -35,6 +38,23 @@ def _base_buildings():
     ]
 
 
+def _base_vegetation():
+    """教学用植被：落叶乔木简化树冠体量（6×6×10 m），叶期 4–10 月。
+
+    布置在目标楼东南/西南侧：夏季清晨（V1）与傍晚（V2）低角度太阳
+    被树冠遮挡（如 W1 右窗 7 月约 09:50–10:55、左窗约 13:45–14:50），
+    冬季落叶（11–3 月不启用）后同一时段不再参与遮挡。
+    """
+    return [
+        dict(name="V1_东南乔木", footprint=box_footprint(14.0, -12.0, 6.0, 6.0),
+             height=10.0, active_months=[4, 5, 6, 7, 8, 9, 10],
+             color="#4caf50"),
+        dict(name="V2_西南乔木", footprint=box_footprint(-14.0, -12.0, 6.0, 6.0),
+             height=10.0, active_months=[4, 5, 6, 7, 8, 9, 10],
+             color="#4caf50"),
+    ]
+
+
 def _base_points():
     """目标楼窗面测点：同一窗面布多个测点（W1 左/中/右）。"""
     pts = []
@@ -61,11 +81,14 @@ def scene_specs():
     theta = 30.0
     s1 = dict(name="S1_邻楼遮挡", description="正南板楼+东南塔楼对目标楼的遮挡（冬夏对比算例）",
               north_offset_deg=0.0, buildings=_base_buildings(),
+              vegetation=_base_vegetation(),
               points=_base_points())
     s2 = dict(name="S2_旋转场景", description="S1 几何逆时针旋转 30°，north_offset=30°，物理等价",
               north_offset_deg=theta,
               buildings=[{**b, "footprint": rotate_footprint(b["footprint"], theta)}
                          for b in _base_buildings()],
+              vegetation=[{**v, "footprint": rotate_footprint(v["footprint"], theta)}
+                          for v in _base_vegetation()],
               points=[{**p,
                        "position": (*_rot(p["position"][:2], theta), p["position"][2]),
                        "normal": (*_rot(p["normal"][:2], theta), p["normal"][2])}
@@ -94,6 +117,13 @@ def seed_database(db) -> list[int]:
             db.add(row)
             db.flush()
             bmap[b["name"]] = row.id
+        for v in spec["vegetation"]:
+            db.add(models.Vegetation(
+                scene_id=scene.id, name=v["name"],
+                footprint=from_shape(Polygon(v["footprint"]), srid=0),
+                height=v["height"], active_months=v["active_months"],
+                color=v["color"]))
+        db.flush()
         for p in spec["points"]:
             db.add(models.MeasurePoint(
                 scene_id=scene.id, building_id=bmap.get(p["host"]),

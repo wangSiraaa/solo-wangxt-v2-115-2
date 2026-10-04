@@ -26,11 +26,13 @@ export default function ResultsPanel({ run, result, onHoverInterval, onTrace }) 
           .filter((iv) => iv.status !== 'night')
           .map((iv, i) => (
             <div key={i}
-              className={`interval ${iv.status}`}
+              className={`interval ${iv.status} ${iv.occluder_kind === 'vegetation' ? 'veg' : ''}`}
               onMouseEnter={() => onHoverInterval?.(iv)}
               onMouseLeave={() => onHoverInterval?.(null)}>
               {fmtTime(iv.start)}–{fmtTime(iv.end)}
-              {iv.status === 'shaded' ? ` 遮挡:${iv.occluder}` : ' 日照'}
+              {iv.status === 'shaded'
+                ? ` 遮挡:${iv.occluder}${iv.occluder_kind === 'vegetation' ? '(植被)' : ''}`
+                : ' 日照'}
             </div>
           ))}
       </div>

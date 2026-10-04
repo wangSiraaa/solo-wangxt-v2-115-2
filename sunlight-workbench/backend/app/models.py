@@ -32,6 +32,8 @@ class Scene(Base):
                              cascade="all, delete-orphan")
     points = relationship("MeasurePoint", back_populates="scene",
                           cascade="all, delete-orphan")
+    vegetation = relationship("Vegetation", back_populates="scene",
+                              cascade="all, delete-orphan")
 
 
 class Building(Base):
@@ -57,6 +59,23 @@ class MeasurePoint(Base):
     normal = Column(JSON, nullable=False)              # 窗面外法线 [x,y,z]
     window_id = Column(String, default="")             # 同一窗面可布多个测点
     scene = relationship("Scene", back_populates="points")
+
+
+class Vegetation(Base):
+    """教学用植被遮挡物：合成几何（树冠体量），按月份参与遮挡。
+
+    与建筑共用"局部坐标多边形 + 高度"的体量表示；active_months 为参与
+    遮挡的月份（1–12，叶期）。仅当月启用的植被才进入射线计算。
+    """
+    __tablename__ = "vegetation"
+    id = Column(Integer, primary_key=True)
+    scene_id = Column(ForeignKey("scenes.id", ondelete="CASCADE"), index=True)
+    name = Column(String, nullable=False)
+    footprint = Column(Geometry("POLYGON", srid=0))    # 模型局部坐标(米)
+    height = Column(Float, nullable=False)             # 树冠顶高(米)，自地面起算
+    active_months = Column(JSON, nullable=False)       # 参与遮挡的月份 [1..12]
+    color = Column(String, default="#4caf50")
+    scene = relationship("Scene", back_populates="vegetation")
 
 
 class Snapshot(Base):

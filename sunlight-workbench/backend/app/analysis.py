@@ -43,7 +43,7 @@ def _flags_at_times(scene: BuiltScene, point: MeasurePointGeom,
         if el <= 0:
             out.append({"time": t.isoformat(), "status": STATUS_NIGHT,
                         "elevation": round(el, 3), "azimuth": round(az, 3),
-                        "occluder": None})
+                        "occluder": None, "occluder_kind": None})
             continue
         d = enu_to_model(sun_vector_enu(el, az), north_offset_deg)
         hit = cast_sun_ray(scene, origin, d)
@@ -52,6 +52,8 @@ def _flags_at_times(scene: BuiltScene, point: MeasurePointGeom,
             "status": STATUS_SHADED if hit else STATUS_SUNLIT,
             "elevation": round(el, 3), "azimuth": round(az, 3),
             "occluder": hit["occluder"] if hit else None,
+            # building / vegetation，供结果与追查区分建筑与植被
+            "occluder_kind": hit["occluder_kind"] if hit else None,
             "occluder_distance": hit["distance"] if hit else None,
             "hit_point": hit["hit_point"] if hit else None,
         })
@@ -59,7 +61,7 @@ def _flags_at_times(scene: BuiltScene, point: MeasurePointGeom,
 
 
 def to_intervals(samples: list[dict]) -> list[dict]:
-    """把细步长采样折叠成最大连续区间（含遮挡物集合）。"""
+    """把细步长采样折叠成最大连续区间（含遮挡物及其类别）。"""
     intervals = []
     for s in samples:
         if (intervals and intervals[-1]["status"] == s["status"]
@@ -69,6 +71,7 @@ def to_intervals(samples: list[dict]) -> list[dict]:
         else:
             intervals.append({"start": s["time"], "end": s["time"],
                               "status": s["status"], "occluder": s["occluder"],
+                              "occluder_kind": s.get("occluder_kind"),
                               "samples": 1})
     return intervals
 
