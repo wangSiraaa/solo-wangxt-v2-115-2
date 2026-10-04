@@ -7,17 +7,22 @@ import { toThree } from '../util.js'
 const RAY_LEN = 120
 const SUN_R = 160
 
+function extrudedVolume(footprint, baseHeight, topHeight) {
+  const shape = new THREE.Shape()
+  footprint.forEach(([x, y], i) => (i ? shape.lineTo(x, y) : shape.moveTo(x, y)))
+  const g = new THREE.ExtrudeGeometry(shape, {
+    depth: topHeight - baseHeight, bevelEnabled: false,
+  })
+  g.translate(0, 0, baseHeight)
+  g.rotateX(-Math.PI / 2) // 模型 z-up → three y-up
+  return g
+}
+
 function Building({ b, highlighted, onClick }) {
-  const geom = useMemo(() => {
-    const shape = new THREE.Shape()
-    b.footprint.forEach(([x, y], i) => (i ? shape.lineTo(x, y) : shape.moveTo(x, y)))
-    const g = new THREE.ExtrudeGeometry(shape, {
-      depth: b.top_height - b.base_height, bevelEnabled: false,
-    })
-    g.translate(0, 0, b.base_height)
-    g.rotateX(-Math.PI / 2) // 模型 z-up → three y-up
-    return g
-  }, [b])
+  const geom = useMemo(
+    () => extrudedVolume(b.footprint, b.base_height, b.top_height),
+    [b],
+  )
   return (
     <mesh geometry={geom} onClick={(e) => { e.stopPropagation(); onClick?.(b.name) }}>
       <meshStandardMaterial
@@ -27,6 +32,39 @@ function Building({ b, highlighted, onClick }) {
         transparent opacity={highlighted ? 0.95 : 0.85}
       />
     </mesh>
+  )
+}
+
+/** 教学用植被体量：绿色半透明 + 线框树冠，与建筑的不透明盒体明确区分。
+    停用月（落叶）只显示虚线框高度的线框，不参与遮挡。 */
+function Vegetation({ v, active, highlighted, onClick }) {
+  const geom = useMemo(
+    () => extrudedVolume(v.footprint, v.base_height, v.crown_height),
+    [v],
+  )
+  const edges = useMemo(() => new THREE.EdgesGeometry(geom), [geom])
+  return (
+    <group onClick={(e) => { e.stopPropagation(); onClick?.(v.name) }}>
+      <mesh geometry={geom}>
+        <meshStandardMaterial
+          color={v.color || '#5d8f4e'}
+          emissive={highlighted ? '#ff5722' : '#1b3a12'}
+          emissiveIntensity={highlighted ? 0.8 : active ? 0.15 : 0}
+          transparent opacity={active ? (highlighted ? 0.85 : 0.55) : 0.06}
+          depthWrite={active}
+        />
+      </mesh>
+      <lineSegments geometry={edges}>
+        <lineBasicMaterial color={active ? '#a8d08d' : '#6c8a5e'}
+          transparent opacity={active ? 0.95 : 0.55} />
+      </lineSegments>
+      {!active && (
+        <Html position={toThree(
+          [v.footprint[0][0], v.footprint[0][1], v.crown_height])} center>
+          <div className="veg-off-label">落叶停用</div>
+        </Html>
+      )}
+    </group>
   )
 }
 
@@ -55,9 +93,14 @@ function NorthArrow() {
   )
 }
 
+function occluderTypeOf(payload, name) {
+  if (payload?.vegetation?.some((v) => v.name === name)) return 'vegetation'
+  return 'building'
+}
+
 export default function SceneViewer({
   payload, sunpath, timeIdx, pointStatus, selectedPointId,
-  highlightOccluder, onSelectPoint, onSelectBuilding,
+  highlightOccluder, activeMonth, onSelectPoint, onSelectBuilding,
 }) {
   const sun = sunpath?.points?.[timeIdx]
   const sunPos = sun ? toThree(sun.dir.map((v) => v * SUN_R)) : null
@@ -69,8 +112,14 @@ export default function SceneViewer({
       <gridHelper args={[200, 40, '#2a3242', '#1c2330']} rotation={[0, 0, 0]} />
       <NorthArrow />
       {payload?.buildings.map((b) => (
-        <Building key={b.id} b={b}
+        <Building key={`b-${b.id}`} b={b}
           highlighted={highlightOccluder === b.name}
+          onClick={onSelectBuilding} />
+      ))}
+      {payload?.vegetation?.map((v) => (
+        <Vegetation key={`v-${v.id}`} v={v}
+          active={activeMonth != null && v.leaf_months.includes(activeMonth)}
+          highlighted={highlightOccluder === v.name}
           onClick={onSelectBuilding} />
       ))}
       {payload?.points.map((p) => (
@@ -90,7 +139,7 @@ export default function SceneViewer({
           <meshBasicMaterial color="#ffeb3b" />
         </mesh>
       )}
-      {/* 测点→太阳 射线：绿=晒到，红=被遮挡（遮挡物见右侧面板/点击建筑高亮） */}
+      {/* 测点→太阳 射线：绿=晒到，红=被遮挡（遮挡物类型见射线标签/右侧面板） */}
       {sun && payload?.points.map((p) => {
         const st = pointStatus?.[p.id]
         if (!st || st.status === 'night') return null
@@ -98,8 +147,19 @@ export default function SceneViewer({
         const e = [o[0] + sun.dir[0] * RAY_LEN, o[1] + sun.dir[1] * RAY_LEN,
                    o[2] + sun.dir[2] * RAY_LEN]
         return (
-          <Line key={p.id} points={[toThree(o), toThree(e)]}
-            color={st.status === 'sunlit' ? '#7ce38b' : '#ef5350'} lineWidth={2} />
+          <group key={p.id}>
+            <Line points={[toThree(o), toThree(e)]}
+              color={st.status === 'sunlit' ? '#7ce38b' : '#ef5350'} lineWidth={2} />
+            {st.status === 'shaded' && st.occluder && (
+              <Html position={toThree([
+                (o[0] + e[0]) / 2, (o[1] + e[1]) / 2, (o[2] + e[2]) / 2])} center>
+                <div className={`ray-tag ${occluderTypeOf(payload, st.occluder)}`}>
+                  {occluderTypeOf(payload, st.occluder) === 'vegetation' ? '🌳 ' : '🏢 '}
+                  {st.occluder}
+                </div>
+              </Html>
+            )}
+          </group>
         )
       })}
       <OrbitControls makeDefault />

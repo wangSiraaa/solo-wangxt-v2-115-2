@@ -4,6 +4,11 @@
 - S2 旋转场景：S1 全部几何逆时针旋转 30° 且 north_offset_deg=30，
   物理情形与 S1 完全等价，用于核对坐标旋转口径（两场景同日期结果应一致）。
 所有坐标为模型局部米制坐标；经纬度/时区/朝北偏角统一挂在场景上。
+
+教学用植被（合成树冠体量）：与建筑共用同一套局部坐标与多边形拉伸表示，
+额外记录 leaf_months（有叶月份）。分析某日时只有当月启用的植被进入射线，
+用于讲解"夏季树荫、冬季落叶"——它是几何物体，不是 unmodeled_occluders
+里那句"行道树未建模"的文字说明。
 """
 from __future__ import annotations
 
@@ -19,6 +24,9 @@ UNMODELED_NOTE = (
     "未建模遮挡：南侧沿街一排悬铃木（树高约 12 m，冠幅约 6 m）未进入几何模型，"
     "1–2 层窗面实际日照可能少于计算值；东南角有一处通信基站杆塔亦未建模。"
     "本场景为合成示例，输出仅为示例评价口径，不构成规划合规结论。")
+
+# 教学植被默认有叶月份（4–10 月）：1 月停用（落叶）、7 月启用（遮荫）
+LEAF_MONTHS_APR_OCT = [4, 5, 6, 7, 8, 9, 10]
 
 
 def _base_buildings():
@@ -50,6 +58,11 @@ def _base_points():
     # 东立面 x=12，法线 (1,0,0)，用于展示方位差异
     pts.append(dict(name="E1_三层东窗_中", position=(12.0, 0.0, 7.6),
                     normal=(1, 0, 0), window_id="E1", host="T_目标楼"))
+    # 西立面 x=-12，法线 (-1,0,0)：基线 1 月 140min/7 月 440min 日照，
+    # 西侧庭荫树在有叶月截掉 7 月下午低角度光（140min），1 月落叶后不受影响，
+    # 是"夏遮荫、冬透光"的主讲测点
+    pts.append(dict(name="W4_三层西窗_中", position=(-12.0, 0.0, 7.6),
+                    normal=(-1, 0, 0), window_id="W4", host="T_目标楼"))
     return pts
 
 
@@ -57,15 +70,41 @@ def _rot(v, theta):
     return rotate_point(v, theta)
 
 
+def _base_vegetation():
+    """教学用树冠体量（合成几何，位置经脚本标定）：
+
+    - V1_东侧行道树：E1 东窗外 10 m，有叶月截住 7 月上午低角度东向光
+      （约 55 min），1 月落叶且太阳方位偏南不与其相交。
+    - V2_西侧庭荫树：W4 西窗外 10 m，有叶月截住 7 月下午低角度西向光
+      （约 140 min）；1 月西南低角度阳光从树冠南侧绕过，落叶月又不参与
+      计算，故 1 月 140 min 基线日照完全不受影响。
+    """
+    return [
+        dict(name="V1_东侧行道树",
+             footprint=box_footprint(22.0, 0.0, 6.0, 6.0),
+             base_height=2.5, crown_height=12.0,
+             leaf_months=list(LEAF_MONTHS_APR_OCT), color="#5d8f4e"),
+        dict(name="V2_西侧庭荫树",
+             footprint=box_footprint(-22.0, 0.0, 6.0, 6.0),
+             base_height=2.5, crown_height=12.0,
+             leaf_months=list(LEAF_MONTHS_APR_OCT), color="#4f8a45"),
+    ]
+
+
 def scene_specs():
     theta = 30.0
     s1 = dict(name="S1_邻楼遮挡", description="正南板楼+东南塔楼对目标楼的遮挡（冬夏对比算例）",
               north_offset_deg=0.0, buildings=_base_buildings(),
+              vegetation=_base_vegetation(),
               points=_base_points())
     s2 = dict(name="S2_旋转场景", description="S1 几何逆时针旋转 30°，north_offset=30°，物理等价",
               north_offset_deg=theta,
               buildings=[{**b, "footprint": rotate_footprint(b["footprint"], theta)}
                          for b in _base_buildings()],
+              # 植被随场景一同旋转，保持两场景物理等价
+              vegetation=[{**v,
+                           "footprint": rotate_footprint(v["footprint"], theta)}
+                          for v in _base_vegetation()],
               points=[{**p,
                        "position": (*_rot(p["position"][:2], theta), p["position"][2]),
                        "normal": (*_rot(p["normal"][:2], theta), p["normal"][2])}
@@ -94,6 +133,12 @@ def seed_database(db) -> list[int]:
             db.add(row)
             db.flush()
             bmap[b["name"]] = row.id
+        for v in spec["vegetation"]:
+            db.add(models.Vegetation(
+                scene_id=scene.id, name=v["name"],
+                footprint=from_shape(Polygon(v["footprint"]), srid=0),
+                base_height=v["base_height"], crown_height=v["crown_height"],
+                leaf_months=list(v["leaf_months"]), color=v["color"]))
         for p in spec["points"]:
             db.add(models.MeasurePoint(
                 scene_id=scene.id, building_id=bmap.get(p["host"]),

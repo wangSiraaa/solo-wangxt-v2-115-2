@@ -1,6 +1,9 @@
 import React from 'react'
 import { fmtMin, fmtTime } from '../util.js'
 
+const occluderTag = (iv) =>
+  iv.occluder_type === 'vegetation' ? ` 植被:${iv.occluder}` : ` 建筑:${iv.occluder}`
+
 /** 结果面板：逐时采样（快览）与连续遮挡时段（正式口径）严格分区展示。 */
 export default function ResultsPanel({ run, result, onHoverInterval, onTrace }) {
   if (!run || !result) {
@@ -11,6 +14,11 @@ export default function ResultsPanel({ run, result, onHoverInterval, onTrace }) 
     <div className="panel">
       <h3>测点 #{result.point_id}</h3>
       <div className="disclaimer">{run.disclaimer}</div>
+      {run.params?.active_vegetation && (
+        <div className="muted small">
+          当月（{run.params.month}月）启用植被：{run.params.active_vegetation.join('、')}
+        </div>
+      )}
       <table className="summary">
         <tbody>
           <tr><td>白天时长</td><td>{fmtMin(s.daylight_minutes)}</td></tr>
@@ -26,11 +34,11 @@ export default function ResultsPanel({ run, result, onHoverInterval, onTrace }) 
           .filter((iv) => iv.status !== 'night')
           .map((iv, i) => (
             <div key={i}
-              className={`interval ${iv.status}`}
+              className={`interval ${iv.status} ${iv.occluder_type ?? ''}`}
               onMouseEnter={() => onHoverInterval?.(iv)}
               onMouseLeave={() => onHoverInterval?.(null)}>
               {fmtTime(iv.start)}–{fmtTime(iv.end)}
-              {iv.status === 'shaded' ? ` 遮挡:${iv.occluder}` : ' 日照'}
+              {iv.status === 'shaded' ? occluderTag(iv) : ' 日照'}
             </div>
           ))}
       </div>
@@ -39,7 +47,7 @@ export default function ResultsPanel({ run, result, onHoverInterval, onTrace }) 
       <div className="hourly">
         {result.hourly_samples.map((h, i) => (
           <span key={i} className={`cell ${h.status}`}
-            title={`${fmtTime(h.time)} ${h.status}${h.occluder ? ' ' + h.occluder : ''}`}>
+            title={`${fmtTime(h.time)} ${h.status}${h.occluder ? ' ' + (h.occluder_type === 'vegetation' ? '植被' : '建筑') + ':' + h.occluder : ''}`}>
             {fmtTime(h.time).slice(0, 2)}
           </span>
         ))}
@@ -48,3 +56,4 @@ export default function ResultsPanel({ run, result, onHoverInterval, onTrace }) 
     </div>
   )
 }
+

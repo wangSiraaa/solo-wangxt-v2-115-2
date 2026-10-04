@@ -30,6 +30,8 @@ class Scene(Base):
 
     buildings = relationship("Building", back_populates="scene",
                              cascade="all, delete-orphan")
+    vegetation = relationship("Vegetation", back_populates="scene",
+                              cascade="all, delete-orphan")
     points = relationship("MeasurePoint", back_populates="scene",
                           cascade="all, delete-orphan")
 
@@ -45,6 +47,26 @@ class Building(Base):
     top_height = Column(Float, nullable=False)
     color = Column(String, default="#9db2c8")
     scene = relationship("Scene", back_populates="buildings")
+
+
+class Vegetation(Base):
+    """教学用植被遮挡物（合成几何，非真实树木测绘）。
+
+    与建筑一样用模型局部坐标的多边形体量表示（footprint 拉伸至 crown_height），
+    但只在 leaf_months 列出的月份参与射线计算，用于说明夏季树荫与冬季落叶的
+    差别。它不替代 Scene.unmodeled_occluders 的文字说明——说明文字永远不是物体。
+    """
+    __tablename__ = "vegetation"
+    id = Column(Integer, primary_key=True)
+    scene_id = Column(ForeignKey("scenes.id", ondelete="CASCADE"), index=True)
+    name = Column(String, nullable=False)
+    footprint = Column(Geometry("POLYGON", srid=0))     # 树冠投影（模型局部坐标，米）
+    base_height = Column(Float, default=0.0)            # 树冠下沿（枝下高）
+    crown_height = Column(Float, nullable=False)        # 树冠顶高度
+    # 参与遮挡的月份（1-12 的 JSON 数组）；停用月按"落叶"处理，不送入射线
+    leaf_months = Column(JSON, nullable=False)
+    color = Column(String, default="#5d8f4e")
+    scene = relationship("Scene", back_populates="vegetation")
 
 
 class MeasurePoint(Base):
